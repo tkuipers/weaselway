@@ -2133,6 +2133,12 @@ rdp_server_set_screen_size(struct rdp_server *server, int width, int height)
 }
 
 bool
+rdp_server_has_client(struct rdp_server *server)
+{
+    return server->peer != NULL;
+}
+
+bool
 rdp_server_client_size(struct rdp_server *server, int *width, int *height)
 {
     struct peer_context *peer_ctx = server->peer;

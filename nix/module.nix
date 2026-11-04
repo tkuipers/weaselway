@@ -230,7 +230,9 @@ in
           wantedBy = [ "default.target" ];
           # PipeWire is socket activated; the audio threads retry until it is up.
           serviceConfig = {
-            ExecStart = lib.getExe' pkgs.weaselwayd "weaselwayd";
+            ExecStart =
+              lib.getExe' pkgs.weaselwayd "weaselwayd"
+              + lib.optionalString (cfg.displays > 1) " --follow-client";
             Restart = "on-failure";
             RestartSec = 2;
           };
@@ -282,6 +284,7 @@ in
                   "--port ${toString (3388 + display)}"
                   "--no-audio"
                   "--no-clipboard"
+                  "--follow-client"
                 ];
                 Restart = "on-failure";
                 RestartSec = 2;

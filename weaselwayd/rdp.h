@@ -90,6 +90,9 @@ bool rdp_server_take_size_request(struct rdp_server *server, int *width, int *he
  * no client yet. For a screen the compositor does not give a size to. */
 bool rdp_server_client_size(struct rdp_server *server, int *width, int *height);
 
+/* Whether a client is connected. */
+bool rdp_server_has_client(struct rdp_server *server);
+
 enum rdp_state rdp_server_state(struct rdp_server *server);
 
 /* True, once, when the client needs the whole screen rather than the damage:

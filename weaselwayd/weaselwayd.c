@@ -83,6 +83,8 @@ struct readback {
 };
 
 struct weaselwayd {
+    gboolean follow_client;
+    bool connected, connected_known;
     GMainLoop *loop;
     int exit_status;
 
@@ -1152,9 +1154,29 @@ try_present(struct weaselwayd *p)
 
 /* What every source of the main loop ends with: something changed, so see
  * what can be done about the screen now. */
+/* Tell dxgdrm whether the display is plugged in, which with --follow-client is
+ * whether a client shows it. */
+static void
+sync_connected(struct weaselwayd *p)
+{
+    bool connected = rdp_server_has_client(p->rdp);
+    struct drm_dxgdrm_set_connected args = { .connected = connected };
+
+    if (!p->follow_client || (p->connected_known && connected == p->connected))
+        return;
+    if (ioctl(p->drm_fd, DRM_IOCTL_DXGDRM_SET_CONNECTED, &args)) {
+        g_warning("DXGDRM_SET_CONNECTED failed: %s", g_strerror(errno));
+        return;
+    }
+    p->connected = connected;
+    p->connected_known = true;
+    g_message("the display is %s", connected ? "connected" : "disconnected");
+}
+
 static void
 pump(struct weaselwayd *p)
 {
+    sync_connected(p);
     apply_size_request(p);
     sync_screen_size(p);
     readback_poll(p);
@@ -1276,6 +1298,10 @@ main(int argc, char **argv)
           "Which of dxgdrm's displays to serve, from 1 (default 1). One weaselwayd each, "
           "on a port of its own",
           "N" },
+        { "follow-client", 0, 0, G_OPTION_ARG_NONE, &p.follow_client,
+          "Disconnect the display while no client shows it, so the compositor "
+          "moves its windows to the other displays",
+          NULL },
         { "no-audio", 0, 0, G_OPTION_ARG_NONE, &no_audio,
           "No sound or microphone for the client", NULL },
         { "no-input", 0, 0, G_OPTION_ARG_NONE, &no_input,
