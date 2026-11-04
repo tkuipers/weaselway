@@ -76,17 +76,27 @@ emit(int fd, uint16_t type, uint16_t code, int32_t value)
     }
 }
 
+/* The device's name: the first display's has no number. */
+static void
+set_device_name(struct uinput_setup *setup, const char *name, int display)
+{
+    if (display > 0)
+        g_snprintf(setup->name, sizeof(setup->name), "%s %d", name, display + 1);
+    else
+        g_strlcpy(setup->name, name, sizeof(setup->name));
+}
+
 static int
-create_pointer(void)
+create_pointer(int display)
 {
     struct uinput_setup setup = {
         .id = { .bustype = BUS_VIRTUAL, .vendor = 0x1d6b, .product = 0x0104 },
-        .name = "Weaselway pointer",
     };
     struct uinput_abs_setup abs_x = { .code = ABS_X, .absinfo = { .maximum = POINTER_ABS_MAX } };
     struct uinput_abs_setup abs_y = { .code = ABS_Y, .absinfo = { .maximum = POINTER_ABS_MAX } };
     int fd = open("/dev/uinput", O_WRONLY | O_CLOEXEC);
 
+    set_device_name(&setup, "Weaselway pointer", display);
     if (fd < 0)
         return -1;
 
@@ -113,15 +123,16 @@ fail:
 }
 
 static int
-create_keyboard(void)
+create_keyboard(int display)
 {
     struct uinput_setup setup = {
         .id = { .bustype = BUS_VIRTUAL, .vendor = 0x1d6b, .product = 0x0105 },
-        .name = "Weaselway keyboard",
     };
     /* Read too, and without waiting: the compositor says which lock is on by
      * setting the keyboard's LEDs, which arrive here as events. */
     int fd = open("/dev/uinput", O_RDWR | O_NONBLOCK | O_CLOEXEC);
+
+    set_device_name(&setup, "Weaselway keyboard", display);
 
     if (fd < 0)
         return -1;
@@ -147,14 +158,13 @@ fail:
 }
 
 static int
-create_touchpad(void)
+create_touchpad(int display)
 {
     /* On USB and with an id of its own: libinput pairs a touchpad it takes
      * to be built in with the keyboard and ignores it while keys are being
      * pressed, which is for palms and has no business here. */
     struct uinput_setup setup = {
         .id = { .bustype = BUS_USB, .vendor = 0x1d6b, .product = 0x0106 },
-        .name = "Weaselway touchpad",
     };
     struct uinput_abs_setup axes[] = {
         { .code = ABS_X, .absinfo = { .maximum = TOUCHPAD_MAX_X, .resolution = TOUCHPAD_RESOLUTION } },
@@ -197,14 +207,14 @@ fail:
 }
 
 struct input *
-input_new(void)
+input_new(int display)
 {
     struct input *input = g_new0(struct input, 1);
 
     g_mutex_init(&input->lock);
     input->touchpad_fd = -1;
-    input->pointer_fd = create_pointer();
-    input->keyboard_fd = input->pointer_fd >= 0 ? create_keyboard() : -1;
+    input->pointer_fd = create_pointer(display);
+    input->keyboard_fd = input->pointer_fd >= 0 ? create_keyboard(display) : -1;
     if (input->pointer_fd < 0 || input->keyboard_fd < 0) {
         g_warning("cannot create the uinput devices (%s) -- no input. "
                   "Is the uinput module loaded and /dev/uinput writable?",
@@ -213,7 +223,7 @@ input_new(void)
         return NULL;
     }
 
-    input->touchpad_fd = create_touchpad();
+    input->touchpad_fd = create_touchpad(display);
     g_message("uinput pointer, keyboard%s created",
               input->touchpad_fd >= 0 ? " and touchpad" : " (but no touchpad)");
     return input;

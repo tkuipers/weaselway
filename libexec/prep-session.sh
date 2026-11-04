@@ -18,7 +18,7 @@ set -xeuo pipefail
 
 if ! grep -q '^dxgdrm ' /proc/modules; then
     if [ -e "${DXGDRM_ROOT}/lib/modules/$(uname -r)/extra/dxgdrm.ko" ]; then
-        modprobe -d "${DXGDRM_ROOT}" dxgdrm
+        modprobe -d "${DXGDRM_ROOT}" dxgdrm displays="${DXGDRM_DISPLAYS:-1}"
         udevadm trigger --subsystem-match=drm
         udevadm settle
     else

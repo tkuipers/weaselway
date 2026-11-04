@@ -171,7 +171,7 @@ ms_since(gint64 since, gint64 now)
 
 /* The dxgdrm render node. Matched on the driver name, as Mesa does. */
 static int
-open_dxgdrm(GError **error)
+open_dxgdrm(int display, GError **error)
 {
     for (int i = 128; i < 128 + 16; i++) {
         g_autofree char *path = g_strdup_printf("/dev/dri/renderD%d", i);
@@ -186,7 +186,17 @@ open_dxgdrm(GError **error)
         match = version && !strcmp(version->name, "dxgdrm");
         drmFreeVersion(version);
         if (match) {
-            g_message("using %s", path);
+            struct drm_dxgdrm_select_display select = { .display = (uint32_t)display };
+
+            /* The first display needs no asking, and works on a module that
+             * has only that one. */
+            if (display > 0 && ioctl(fd, DRM_IOCTL_DXGDRM_SELECT_DISPLAY, &select)) {
+                g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
+                            "dxgdrm has no display %d (loaded with displays=%d or less?): %s",
+                            display + 1, display, g_strerror(errno));
+                return -1;
+            }
+            g_message("using %s, display %d", path, display + 1);
             return g_steal_fd(&fd);
         }
     }
@@ -1250,7 +1260,8 @@ main(int argc, char **argv)
         .changed_data = &p,
     };
     g_autofree char *shm_dir = NULL;
-    gboolean no_input = FALSE, no_clipboard = FALSE, verbose = FALSE;
+    gboolean no_input = FALSE, no_clipboard = FALSE, no_audio = FALSE, verbose = FALSE;
+    int display = 1;
     const GOptionEntry entries[] = {
         { "port", 0, 0, G_OPTION_ARG_INT, &rdp_config.vsock_port,
           "The vsock port the RDP server listens on (default $WEASELWAY_VSOCK_PORT, or 3389)",
@@ -1261,6 +1272,12 @@ main(int argc, char **argv)
           "The shared-memory share the client maps the frames from (default "
           "$WSL2_SHARED_MEMORY_MOUNT_POINT, or /mnt/wslg-shared-memory)",
           "DIR" },
+        { "display", 0, 0, G_OPTION_ARG_INT, &display,
+          "Which of dxgdrm's displays to serve, from 1 (default 1). One weaselwayd each, "
+          "on a port of its own",
+          "N" },
+        { "no-audio", 0, 0, G_OPTION_ARG_NONE, &no_audio,
+          "No sound or microphone for the client", NULL },
         { "no-input", 0, 0, G_OPTION_ARG_NONE, &no_input,
           "Create no uinput devices: no input from the client", NULL },
         { "no-clipboard", 0, 0, G_OPTION_ARG_NONE, &no_clipboard,
@@ -1283,7 +1300,7 @@ main(int argc, char **argv)
         g_printerr("%s\n", error->message);
         return 2;
     }
-    if (argc > 1 || rdp_config.vsock_port <= 0 || rdp_config.tcp_port < 0 ||
+    if (argc > 1 || display < 1 || rdp_config.vsock_port <= 0 || rdp_config.tcp_port < 0 ||
         rdp_config.tcp_port > 65535) {
         g_autofree char *help = g_option_context_get_help(options, TRUE, NULL);
 
@@ -1296,20 +1313,21 @@ main(int argc, char **argv)
         shm_dir = g_strdup(env && *env ? env : "/mnt/wslg-shared-memory");
     }
     rdp_config.shm_dir = shm_dir;
+    rdp_config.no_audio = no_audio;
     rdp_config.verbose = p.verbose = verbose;
     log_init(verbose);
 
     /* A client that goes away mid-write must not take weaselwayd with it. */
     signal(SIGPIPE, SIG_IGN);
 
-    p.drm_fd = open_dxgdrm(&error);
+    p.drm_fd = open_dxgdrm(display - 1, &error);
     if (p.drm_fd < 0 || !init_egl(&p, &error)) {
         g_warning("%s", error->message);
         return EXIT_FAILURE;
     }
 
     if (!no_input)
-        p.input = input_new();
+        p.input = input_new(display - 1);
     if (!no_clipboard)
         p.selection = selection_new();
 

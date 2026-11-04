@@ -7,15 +7,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1791966811,
-        "narHash": "sha256-Z9pHQaYK5i7k0zWqsSCLJHt3VtS6dTxaPth2l8DZbOo=",
-        "owner": "weaselway",
+        "lastModified": 1793807496,
+        "narHash": "sha256-nI+durxBxeUgGo+d6Muc84DHANSZCQjKNbstnw5C7EM=",
+        "owner": "tkuipers",
         "repo": "dxgdrm",
-        "rev": "8bbcde9b535235786f78954e9efee1a8bf622c9d",
+        "rev": "aada7ac2cde94ce76feee58529afd0f9b44a8853",
         "type": "github"
       },
       "original": {
-        "owner": "weaselway",
+        "owner": "tkuipers",
+        "ref": "two-displays",
         "repo": "dxgdrm",
         "type": "github"
       }

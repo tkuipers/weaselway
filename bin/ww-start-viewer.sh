@@ -3,12 +3,19 @@
 # Show the session on Windows. weaselwayd binds the vsock port, and this is
 # the FreeRDP client on the Windows side that displays what it serves. It can
 # be started before ww-start-session.sh: the window stays empty until a
-# compositor is up.
+# compositor is up. `--display N`, as the first argument, shows display N of
+# several (see weaselway.displays in nix/module.nix).
 
 set -eu -o pipefail
 
 # The NixOS image ships the client in the store and points this at it.
 VIEWER="${WEASELWAY_VIEWER:-/mnt/c/Weaselway/sdl-freerdp.exe}"
+
+DISPLAY_NUMBER=1
+if [ "${1:-}" = --display ]; then
+    DISPLAY_NUMBER="${2:?--display needs a number}"
+    shift 2
+fi
 
 # The port weaselwayd listens on: environment.d gives it to the user manager,
 # which is what weaselwayd's unit inherits.
@@ -17,6 +24,8 @@ if [ -z "${PORT}" ]; then
     echo "error: WEASELWAY_VSOCK_PORT is not in the user manager's environment -- is environment.d/10-weaselway.conf installed?" >&2
     exit 1
 fi
+# Each further display's weaselwayd is on the next port.
+PORT=$((PORT + DISPLAY_NUMBER - 1))
 
 # The Hyper-V VM the client connects to. wslinfo is WSL's own /init under
 # another name; NixOS-WSL does not link it into /bin, so fall back to calling
@@ -67,10 +76,12 @@ COMMAND=(
     /log-level:warn
     /multitouch
     /sdl-touchpad-gestures
-    /audio-mode:redirect
-    /microphone
-    "$@"
 )
+# Sound belongs to the first display's viewer.
+if [ "${DISPLAY_NUMBER}" = 1 ]; then
+    COMMAND+=(/audio-mode:redirect /microphone)
+fi
+COMMAND+=("$@")
 
 # DEBUG=1 runs the viewer in the foreground, with its log on the terminal.
 if [ "${DEBUG:-}" = 1 ]; then
@@ -80,6 +91,9 @@ fi
 # Otherwise it runs on in the background, in a session of its own so that
 # closing the terminal does not end it, with its log in a file.
 LOG="${XDG_RUNTIME_DIR:-/tmp}/weaselway-viewer.log"
+if [ "${DISPLAY_NUMBER}" != 1 ]; then
+    LOG="${XDG_RUNTIME_DIR:-/tmp}/weaselway-viewer-${DISPLAY_NUMBER}.log"
+fi
 setsid "${COMMAND[@]}" > "${LOG}" 2>&1 < /dev/null &
 VIEWER_PID=$!
 disown

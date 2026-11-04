@@ -12,8 +12,11 @@
 
 struct input;
 
-/* NULL if /dev/uinput cannot be used; the session then runs without input. */
-struct input *input_new(void);
+/* NULL if /dev/uinput cannot be used; the session then runs without input.
+ * @display, from 0, tells the devices of one viewer from another's: the second
+ * display's are "Weaselway pointer 2" and so on, for the compositor to map to
+ * the output they belong to. */
+struct input *input_new(int display);
 void input_free(struct input *input);
 
 /* A position in pixels on a screen of the given size. */

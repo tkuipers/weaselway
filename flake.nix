@@ -10,7 +10,7 @@
     };
 
     dxgdrm = {
-      url = "github:weaselway/dxgdrm";
+      url = "github:tkuipers/dxgdrm/two-displays";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

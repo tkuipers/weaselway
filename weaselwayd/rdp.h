@@ -34,6 +34,8 @@ struct rdp_config {
     /* The session's clipboard, which the client's is kept in step with; NULL
      * for none. */
     struct selection *selection;
+    /* Leave sound and the microphone to the viewer of another display. */
+    bool no_audio;
     bool verbose;
     /* Called whenever the server has dispatched: the client's state, the
      * size it wants, or whether it wants the whole screen may be another. */

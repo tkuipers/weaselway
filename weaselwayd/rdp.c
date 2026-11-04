@@ -1407,9 +1407,11 @@ peer_finish_activation(freerdp_peer *client)
     setup_disp(peer_ctx);
     setup_wwdisplay(peer_ctx);
     /* Without sound if either fails. */
-    peer_ctx->audio_out = audio_out_new(peer_ctx->vcm, audio_flush, peer_ctx,
-                                        peer_ctx->server->config.verbose);
-    peer_ctx->audio_in = audio_in_new(peer_ctx->vcm);
+    if (!peer_ctx->server->config.no_audio) {
+        peer_ctx->audio_out = audio_out_new(peer_ctx->vcm, audio_flush, peer_ctx,
+                                            peer_ctx->server->config.verbose);
+        peer_ctx->audio_in = audio_in_new(peer_ctx->vcm);
+    }
     /* Without a clipboard if the client did not ask for the channel. */
     peer_ctx->clipboard = clipboard_new(peer_ctx->vcm, client->context,
                                         peer_ctx->server->config.selection);

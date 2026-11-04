@@ -28,6 +28,7 @@ let
     ];
     text = ''
       export DXGDRM_ROOT="${dxgdrm-all}"
+      export DXGDRM_DISPLAYS="${toString cfg.displays}"
       exec ${pkgs.bash}/bin/bash ${../libexec/prep-session.sh}
     '';
   };
@@ -64,6 +65,17 @@ in
         description. Null leaves the choice to d3d12, which takes the first
         adapter Windows lists. `ww-start-session --adapter` still overrides
         it for a single session.
+      '';
+    };
+
+    displays = lib.mkOption {
+      type = lib.types.ints.between 1 4;
+      default = 1;
+      example = 2;
+      description = ''
+        Number of virtual displays, each an output of the compositor with its
+        own viewer window: `ww-start-viewer --display 2` for the second. The
+        module takes this when it loads, so a change needs `wsl --shutdown`.
       '';
     };
 
@@ -251,6 +263,32 @@ in
         // lib.optionalAttrs (cfg.adapter != null) {
           MESA_D3D12_DEFAULT_ADAPTER_NAME = cfg.adapter;
         };
+      }
+
+      {
+        # The other displays. Sound and the clipboard stay with the first, or
+        # every viewer would play the one and fight over the other.
+        systemd.user.services = lib.listToAttrs (
+          map (display: {
+            name = "weaselwayd-${toString display}";
+            value = {
+              description = "Weaselway display server for the viewer of display ${toString display}";
+              documentation = [ "https://github.com/weaselway/weaselway" ];
+              wantedBy = [ "default.target" ];
+              serviceConfig = {
+                ExecStart = lib.concatStringsSep " " [
+                  (lib.getExe' pkgs.weaselwayd "weaselwayd")
+                  "--display ${toString display}"
+                  "--port ${toString (3388 + display)}"
+                  "--no-audio"
+                  "--no-clipboard"
+                ];
+                Restart = "on-failure";
+                RestartSec = 2;
+              };
+            };
+          }) (lib.range 2 cfg.displays)
+        );
       }
 
       (lib.mkIf config.services.desktopManager.plasma6.enable {
