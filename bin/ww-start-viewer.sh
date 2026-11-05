@@ -106,5 +106,13 @@ if ! kill -0 "${VIEWER_PID}" 2> /dev/null; then
     exit 1
 fi
 
+# Windows schedules WSL's CPUs as its own threads, so a build in the distro can
+# starve the viewer, and the sound with it. Best effort: the viewer runs without.
+if [ -x "${POWERSHELL}" ]; then
+    (cd /mnt/c && "${POWERSHELL}" -NoProfile -NonInteractive -Command \
+        "Get-Process sdl-freerdp | ForEach-Object { \$_.PriorityClass = 'AboveNormal' }" \
+        < /dev/null > /dev/null 2>&1) || true
+fi
+
 echo "The viewer is running. Its log: ${LOG}"
 echo "To see the log on the terminal instead: DEBUG=1 ww-start-viewer"
