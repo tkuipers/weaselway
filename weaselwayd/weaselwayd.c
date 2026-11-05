@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 #include <gio/gio.h>
@@ -79,7 +80,8 @@ struct readback {
     uint64_t buffer_id;
     /* The screen's size when it was issued. */
     int width, height;
-    gint64 started, issued;
+    /* @landed: the fence was seen signalled and the copy into @frame began. */
+    gint64 started, issued, landed;
 };
 
 struct weaselwayd {
@@ -286,19 +288,17 @@ readback_path(const struct weaselwayd *p)
 static bool
 init_egl(struct weaselwayd *p, GError **error)
 {
-    static const EGLint context_attribs[] = {
+    /* Our Mesa lowers the GPU priority of every other process on WSL, and
+     * keeps contexts that ask for high priority at the default. */
+    EGLint attribs[] = {
+        EGL_CONTEXT_PRIORITY_LEVEL_IMG, EGL_CONTEXT_PRIORITY_HIGH_IMG,
         EGL_CONTEXT_MAJOR_VERSION, 3,
         EGL_CONTEXT_MINOR_VERSION, 1,
         EGL_NONE,
     };
-    /* The compute readback needs ES 3.1; a driver without it still gets a
-     * context, and glReadPixels. */
-    static const EGLint context_attribs_30[] = {
-        EGL_CONTEXT_MAJOR_VERSION, 3,
-        EGL_NONE,
-    };
+    const EGLint *context_attribs;
     const char *extensions;
-    EGLint major, minor;
+    EGLint major, minor, priority = 0;
 
     p->gbm = gbm_create_device(p->drm_fd);
     if (!p->gbm) {
@@ -323,16 +323,24 @@ init_egl(struct weaselwayd *p, GError **error)
     }
 
     eglBindAPI(EGL_OPENGL_ES_API);
+    context_attribs = strstr(extensions, "EGL_IMG_context_priority") ? attribs : attribs + 2;
     p->context = eglCreateContext(p->display, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT, context_attribs);
-    if (p->context == EGL_NO_CONTEXT)
+    if (p->context == EGL_NO_CONTEXT) {
+        /* The compute readback needs ES 3.1; a driver without it still gets a
+         * context, and glReadPixels. */
+        attribs[4] = EGL_NONE;
         p->context = eglCreateContext(p->display, EGL_NO_CONFIG_KHR, EGL_NO_CONTEXT,
-                                      context_attribs_30);
+                                      context_attribs);
+    }
     if (p->context == EGL_NO_CONTEXT ||
         !eglMakeCurrent(p->display, EGL_NO_SURFACE, EGL_NO_SURFACE, p->context)) {
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "cannot create a GLES3 context (0x%x)",
                     eglGetError());
         return false;
     }
+
+    eglQueryContext(p->display, p->context, EGL_CONTEXT_PRIORITY_LEVEL_IMG, &priority);
+    g_message("GPU priority is %s", priority == EGL_CONTEXT_PRIORITY_HIGH_IMG ? "high" : "default");
 
     image_target_texture_2d =
         (void (*)(GLenum, void *))eglGetProcAddress("glEGLImageTargetTexture2DOES");
@@ -525,11 +533,12 @@ frame_done(struct weaselwayd *p)
 
     if (p->verbose)
         g_debug("frame %u: %s buffer %" G_GUINT64_FORMAT ", %dx%d+%d+%d (%.1f%%) read back in "
-                "%.2f ms (issue %.2f, %s)",
+                "%.2f ms (issue %.2f, fence %.2f, copy %.2f, %s)",
                 p->frames, p->dumb ? "dumb" : "d3d12", rb->buffer_id, rb->rect.width,
                 rb->rect.height, rb->rect.x, rb->rect.y,
                 100.0 * rb->rect.width * rb->rect.height / ((double)p->width * p->height),
                 ms_since(rb->started, done), ms_since(rb->started, rb->issued),
+                ms_since(rb->issued, rb->landed), ms_since(rb->landed, done),
                 p->dumb ? "dumb" : readback_path(p));
 }
 
@@ -674,10 +683,10 @@ readback_begin(struct weaselwayd *p)
 
 /* Once the fence has signalled: copy the rect out of the pixel buffer. */
 static bool
-readback_copy(struct weaselwayd *p, uint8_t *pixels)
+readback_copy(struct weaselwayd *p, uint8_t *pixels, size_t stride)
 {
     const struct rdp_rect *rect = &p->readback.rect;
-    size_t row_bytes = (size_t)rect->width * 4, stride = (size_t)p->width * 4;
+    size_t row_bytes = (size_t)rect->width * 4;
     const uint8_t *src;
 
     glBindBuffer(GL_PIXEL_PACK_BUFFER, p->pbo);
@@ -711,6 +720,7 @@ readback_poll(struct weaselwayd *p)
     struct readback *rb = &p->readback;
     bool signalled;
     uint8_t *pixels;
+    size_t stride;
 
     if (!rb->active)
         return;
@@ -736,11 +746,12 @@ readback_poll(struct weaselwayd *p)
 
     /* The client may have left, or been resized, while the pixels were on
      * their way. Whoever comes next asks for the whole screen anyway. */
-    pixels = rdp_server_frame_pixels(p->rdp, &rb->frame);
+    pixels = rdp_server_frame_pixels(p->rdp, &rb->frame, &stride);
     if (!pixels)
         return;
 
-    if (readback_copy(p, pixels))
+    rb->landed = g_get_monotonic_time();
+    if (readback_copy(p, pixels, stride))
         frame_done(p);
     else
         frame_failed(p);
@@ -751,11 +762,10 @@ readback_poll(struct weaselwayd *p)
  * goes on to the client is @rect. XRGB8888 is B, G, R, X in memory, as
  * wanted. */
 static bool
-read_dumb(struct weaselwayd *p, uint8_t *pixels, const struct rdp_rect *rect)
+read_dumb(struct weaselwayd *p, uint8_t *pixels, size_t stride, const struct rdp_rect *rect)
 {
     struct drm_dxgdrm_read_pixels read = { .plane = DXGDRM_PLANE_PRIMARY };
     size_t size = (size_t)p->pitch * (size_t)p->height;
-    size_t stride = (size_t)p->width * 4;
     size_t offset = (size_t)rect->x * 4;
 
     if (p->dumb_size < size) {
@@ -1031,6 +1041,39 @@ apply_size_request(struct weaselwayd *p)
                   g_strerror(errno));
 }
 
+/*
+ * Line the compositor's frames up with the client's monitor. dxgdrm's vblank
+ * runs at the monitor's rate in a random phase to it, and drifts. The client
+ * says how long before its vblank the frames were ready, the late tail of
+ * it; moving dxgdrm's vblank later by a millisecond makes that a millisecond
+ * less. Half the error per step, so the frames that are already on their way
+ * do not make it overshoot.
+ */
+#define PRESENT_TARGET_SLACK_US 3000
+#define PRESENT_DEADBAND_US 500
+#define PRESENT_MAX_SHIFT_US 2000
+
+static void
+apply_present_timing(struct weaselwayd *p)
+{
+    struct drm_dxgdrm_shift_vblank shift = { 0 };
+    uint32_t frames;
+    int32_t slack_us, error_us;
+
+    if (!rdp_server_take_present_timing(p->rdp, &frames, &slack_us))
+        return;
+
+    error_us = slack_us - PRESENT_TARGET_SLACK_US;
+    if (ABS(error_us) < PRESENT_DEADBAND_US)
+        return;
+    shift.shift_ns =
+        (int64_t)CLAMP(error_us / 2, -PRESENT_MAX_SHIFT_US, PRESENT_MAX_SHIFT_US) * 1000;
+    g_debug("frames ready %d us before the client's vblank (%u frames), shifting ours by %"
+            G_GINT64_FORMAT " us", slack_us, frames, (gint64)shift.shift_ns / 1000);
+    if (drmIoctl(p->drm_fd, DRM_IOCTL_DXGDRM_SHIFT_VBLANK, &shift))
+        g_debug("cannot shift the vblank: %s", g_strerror(errno));
+}
+
 /* The size of the client's screen: the compositor's, or without one the
  * window the client asked for. */
 static void
@@ -1057,6 +1100,7 @@ present_placeholder(struct weaselwayd *p)
     struct rdp_rect rect = { 0, 0, p->screen_width, p->screen_height };
     struct rdp_frame frame;
     uint8_t *pixels;
+    size_t stride;
 
     if (rdp_server_take_full_request(p->rdp))
         p->placeholder_owed = true;
@@ -1065,13 +1109,13 @@ present_placeholder(struct weaselwayd *p)
 
     if (!rdp_server_begin_frame(p->rdp, &rect, &frame))
         return;
-    pixels = rdp_server_frame_pixels(p->rdp, &frame);
+    pixels = rdp_server_frame_pixels(p->rdp, &frame, &stride);
     if (!pixels) {
         rdp_server_cancel_frame(p->rdp, &frame);
         return;
     }
 
-    placeholder_draw(pixels, rect.width, rect.height);
+    placeholder_draw(pixels, stride, rect.width, rect.height);
     rdp_server_end_frame(p->rdp, &frame, &rect);
     p->placeholder_owed = false;
     p->placeholder_up = true;
@@ -1093,6 +1137,7 @@ try_present(struct weaselwayd *p)
     enum rdp_state state = rdp_server_state(p->rdp);
     struct rdp_rect rect;
     uint8_t *pixels;
+    size_t stride;
 
     if (rb->active)
         return;
@@ -1144,9 +1189,9 @@ try_present(struct weaselwayd *p)
         return;
     }
 
-    rb->issued = rb->started;
-    pixels = rdp_server_frame_pixels(p->rdp, &rb->frame);
-    if (pixels && read_dumb(p, pixels, &rect))
+    rb->issued = rb->landed = rb->started;
+    pixels = rdp_server_frame_pixels(p->rdp, &rb->frame, &stride);
+    if (pixels && read_dumb(p, pixels, stride, &rect))
         frame_done(p);
     else
         frame_failed(p);
@@ -1178,10 +1223,14 @@ pump(struct weaselwayd *p)
 {
     sync_connected(p);
     apply_size_request(p);
+    apply_present_timing(p);
     sync_screen_size(p);
     readback_poll(p);
-    try_present(p);
+    /* Before the readback is issued, which takes a millisecond: the flip
+     * completes on the first vblank after the ack, and the compositor commits
+     * only about that long before it. */
     ack_frame(p);
+    try_present(p);
 }
 
 static void
@@ -1345,6 +1394,11 @@ main(int argc, char **argv)
 
     /* A client that goes away mid-write must not take weaselwayd with it. */
     signal(SIGPIPE, SIG_IGN);
+
+    /* Before any thread starts, so all inherit it. LimitNICE on user@.service
+     * allows it; without it weaselwayd runs at the normal priority. */
+    if (setpriority(PRIO_PROCESS, 0, -11) < 0)
+        g_message("running at the normal priority: %s", g_strerror(errno));
 
     p.drm_fd = open_dxgdrm(display - 1, &error);
     if (p.drm_fd < 0 || !init_egl(&p, &error)) {

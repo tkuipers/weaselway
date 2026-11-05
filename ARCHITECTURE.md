@@ -68,7 +68,7 @@ Everything comes from the flake.
 
 | Component | Source | Where it runs |
 |---|---|---|
-| mesa with the d3d12 changes | `weaselway/mesa`, branch `mesa-26.2.1-wsl` | user distro (`/run/opengl-driver`) |
+| mesa with the d3d12 changes | `weaselway/mesa`, branch `mesa-26.2.6-wsl` | user distro (`/run/opengl-driver`) |
 | dxgdrm kernel module | `weaselway/dxgdrm` flake | user distro kernel, loaded from the store |
 | weaselwayd | [weaselwayd/](weaselwayd) in this repo | user distro, as a unit of the user manager |
 | mutter | nixpkgs, plus [one patch](nix/mutter-stage-relayout.patch) | user distro (gnome-shell links it) |
@@ -110,7 +110,7 @@ problems that show up there but are unrelated to RDP:
 
 - **weaselway** (this repository): the flake, the NixOS module, the overlay, the image
   configuration, weaselwayd and the shell scripts.
-- **mesa**: the image builds the branch `mesa-26.2.1-wsl` with nixpkgs' Mesa package definition.
+- **mesa**: the image builds the branch `mesa-26.2.6-wsl` with nixpkgs' Mesa package definition.
   `main` carries the same commits on top of upstream main.
 - **dxgdrm**: `main`. The module is built with the toolchain the WSL kernel itself is built with,
   the kernel.org crosstool gcc 13.2.0 with binutils 2.41. The kernel sets `CONFIG_MODVERSIONS` and
@@ -229,7 +229,7 @@ on a WSL installation. This section records those failures.
 - The module is keyed on the kernel release. `weaselway-prep` loads
   `dxgdrm-all/lib/modules/$(uname -r)/extra/dxgdrm.ko`, and the `dxgdrm` flake
   lists the releases it is built for in its `kernels` attribute, currently
-  `6.18.33.2`, `6.18.40.1` and `6.18.54.1` (`-microsoft-standard-WSL2`).
+  `6.18.40.1` and `6.18.54.1` (`-microsoft-standard-WSL2`).
   On any other kernel the file does not
   exist, the unit logs that, and `ww-start-session` refuses to start for lack of
   the KMS node. Supporting a new WSL kernel means running dxgdrm's
@@ -281,6 +281,14 @@ on a WSL installation. This section records those failures.
   compositor that finds them there, left over from a previous session, tries to run nested.
 - `weaselwayd.service` is a unit of the user manager, wanted by `default.target`. It waits for a
   compositor and keeps running when the compositor exits, so it is not bound to the session.
+- weaselwayd sets its nice value to -11 before it starts any thread, so all its threads inherit it,
+  Mesa's and FreeRDP's included. `LimitNICE=-11` on `user@.service` allows this. rtkit, which
+  PipeWire uses, raises single threads only and sets `SCHED_RESET_ON_FORK`, so threads that Mesa
+  and FreeRDP start would stay at nice 0. Without the limit weaselwayd logs it and runs at nice 0.
+- On the GPU, our Mesa sets the dxgkrnl priority of every D3D12 context it creates to -3, and to 0
+  for GL processes and Vulkan queues that request high priority through `EGL_IMG_context_priority`
+  or `VK_KHR_global_priority`. weaselwayd and the compositors request it. D3D12's own queue priority has
+  no effect on WSL. See [ADR 0033](docs/adr/0033-gpu-priority-through-dxgkrnl-contexts.md).
 - `/etc/environment.d/10-weaselway.conf` is the environment of the user manager, and therefore of
   weaselwayd and the desktop's services: `GALLIUM_DRIVER=d3d12`, `GSK_RENDERER=gl`,
   `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1` and the vsock port. WebKit's sandbox does not bind
@@ -359,7 +367,7 @@ weaselway.cachix.org. A machine that uses it as a substituter (`extra-substitute
 FreeRDP and the Windows viewer build quickly; the mingw gcc is cached for x86_64.
 
 To build against unpushed commits of the other repositories, override the input, for example
-`--override-input mesa-src 'git+file:../mesa?ref=mesa-26.2.1-wsl'`. The same works for `freerdp` and
+`--override-input mesa-src 'git+file:../mesa?ref=mesa-26.2.6-wsl'`. The same works for `freerdp` and
 `dxgdrm`.
 
 ### Building on aarch64
@@ -403,14 +411,28 @@ The shell tests are not part of the build. They need mutter or KWin, D-Bus and, 
 the composite action [.github/actions/build-image](.github/actions/build-image) on the
 `ubuntu-26.04` runner, once per desktop. actionlint does not know that label yet, but it exists.
 
+- Before the images, build-image.yml builds what cache.nixos.org lacks in one job per part: the
+  kernel trees with dxgdrm, the Windows viewer, mesa with weaselwayd's freerdp, and the patched
+  GNOME and Plasma packages. Each pushes to Cachix, and the image jobs only download them. Hydra
+  does not build the mingw cross toolchain the viewer needs, so a nixpkgs bump that changes stdenv
+  (the November glibc update did) compiles it again, which takes about an hour.
 - The images of a build run are kept as artifacts for one day, the shortest GitHub allows.
+- The `unstable` jobs build the same two systems on `nixpkgs-unstable`
+  (`nixosConfigurations.wsl-*-unstable`), only to fill the cache: they are not packed, kept or
+  released. dxgdrm, the viewer and NixOS-WSL follow the stable `nixpkgs`, so both share them
+  ([ADR 0032](docs/adr/0032-stable-and-unstable-nixpkgs.md)).
+- [update-nixpkgs.yml](.github/workflows/update-nixpkgs.yml) runs `nix flake update nixpkgs` on
+  Fridays and `nix flake update nixpkgs-unstable` on Saturdays, calls build-image.yml with the
+  new lock, and commits the lock to `main` only if that build passes. The push uses
+  `GITHUB_TOKEN`, so it starts no further build.
 - The release workflow builds the two images in separate jobs and creates the release in a third,
   so a release is never published with only one of them.
 
 - The image is about 1.4 GiB. GitHub limits release assets to 2 GiB, so keep an eye on the closure:
   the kernel tree, the kernel toolchain or Orca's voices each add hundreds of MB if they find their
   way back in.
-- Both workflows push every path they build to weaselway.cachix.org with `cachix/cachix-action`. The
+- The workflows push every path they build, except separate `-debug` outputs, to weaselway.cachix.org
+  with `cachix/cachix-action`. The
   token is the `CACHIX_AUTH_TOKEN` secret, which is passed to the composite action as an input
   because composite actions cannot read secrets. A run with an empty cache took about 45 minutes.
   With a warm cache only the changed packages are compiled. Pull requests from forks receive no

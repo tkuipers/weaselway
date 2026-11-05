@@ -36,8 +36,10 @@ falls behind would otherwise collect a queue of frames.
 - weaselwayd acknowledges a frame to dxgdrm (`DXGDRM_ACK_FRAME`) unless its
   damage cannot be read back yet, because the previous readback is
   outstanding or the client holds every buffer. dxgdrm withholds the
-  compositor's page flip until then, for at most `flip_timeout_ms` (see
-  dxgdrm 0013).
+  compositor's page flip until then, for at most `flip_timeout_ms`, and
+  completes it on the next vblank (see dxgdrm 0019). The acknowledgement goes
+  out before the readback is issued: mutter commits only about 1.3 ms before
+  the vblank, and issuing takes about a millisecond.
 - A client that minimises its window (Suppress Output) counts as no client:
   nothing is read back, and frames are acknowledged at once (`e652e8a`). When
   it shows the window again it gets the whole screen.
@@ -50,4 +52,5 @@ falls behind would otherwise collect a queue of frames.
 - The EGL fence has to be the one that flushes the copy. d3d12 answers a flush
   with no work in it with a fence that stands for no work.
 - `weaselwayd --verbose` logs the share of the screen read back per frame and
-  how long it took.
+  how long it took: issuing it, waiting for its fence, and the copy to the
+  client.

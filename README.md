@@ -41,8 +41,7 @@ installation instructions.
 - Windows with WSL2, on an x86_64 machine. The image is x86_64 only.
 - A GPU with a Windows driver that supports WSL GPU compute (the same driver
   that provides GPU access to other WSL distros).
-- One of the WSL kernels `6.18.33.2-microsoft-standard-WSL2` (WSL 2.7),
-  `6.18.40.1-microsoft-standard-WSL2` (WSL 3.0.1) or
+- One of the WSL kernels `6.18.40.1-microsoft-standard-WSL2` (WSL 3.0.1) or
   `6.18.54.1-microsoft-standard-WSL2` (WSL 3.0.3). The `dxgdrm` module is built
   for these kernel releases, and another release cannot load it.
   Check yours with `uname -r` inside any WSL distro, and see
@@ -149,7 +148,7 @@ Then delete the desktop shortcut if you installed it.
 ## Limitations
 
 - Weaselway supports the WSL kernel releases it was built for, currently
-  `6.18.33.2`, `6.18.40.1` and `6.18.54.1` (`-microsoft-standard-WSL2`).
+  `6.18.40.1` and `6.18.54.1` (`-microsoft-standard-WSL2`).
   After `wsl --update` installs a kernel that is not among them, the module is
   missing and no session starts until a Weaselway release adds that kernel.
   Each kernel needs its own build of `dxgdrm`, with the kernel's configuration
@@ -213,6 +212,42 @@ the same for sway without a rebuild. Its `nix-shell` shebang fetches sway when
 the session starts.
 
 To make a custom session the default, set `weaselway.session = "custom"`.
+
+niri needs one setting for weaselway: the GPU to render on. `card0` belongs
+to WSL's vgem (a virtual graphics device that cannot render), so point niri
+at dxgdrm's render node instead. This configuration builds niri's default
+config with that setting added:
+
+```nix
+environment.systemPackages =
+  let
+    niriConfig = pkgs.runCommand "niri-config.kdl" { } ''
+      cat ${pkgs.niri.src}/resources/default-config.kdl - > $out <<'EOF'
+      debug {
+          render-drm-device "/dev/dri/by-path/platform-dxgdrm-render"
+      }
+      EOF
+    '';
+  in
+  [
+    pkgs.niri
+    pkgs.alacritty # Super+T in niri's default config
+    pkgs.fuzzel # Super+D
+    pkgs.waybar # started by the default config
+    (pkgs.writeShellScriptBin "custom-weaselway-session" ''
+      export XDG_CURRENT_DESKTOP=niri
+      exec niri --config ${niriConfig} "$@"
+    '')
+  ];
+```
+
+To keep the config in your home directory instead, copy niri's
+[default config](https://github.com/YaLTeR/niri/blob/main/resources/default-config.kdl)
+to `~/.config/niri/config.kdl`, add the `debug` block, and drop `--config`.
+
+niri 26.04 was tested with this config on the GNOME image: the viewer shows
+niri, the clipboard works, and niri follows the size of the viewer window. Keyboard,
+mouse, audio and X11 apps have not been tested.
 
 ## The viewer
 
@@ -332,6 +367,66 @@ To undo an update, switch back to the previous generation:
 sudo nixos-rebuild switch --rollback
 ```
 
+### Stable, unstable or your own nixpkgs
+
+The image runs on the stable NixOS release. weaselway's lock also pins
+nixos-unstable, and CI builds both and pushes them to the binary cache. Both
+are updated weekly, the stable one on Fridays and unstable on Saturdays, and
+a new lock is only committed once CI has built it.
+
+The flake selects nixpkgs through the `lib.nixosSystem` it calls. In the
+image's `/etc/nixos/flake.nix`, change this line and rebuild to switch to
+unstable:
+
+```nix
+nixosConfigurations.nixos = weaselway.inputs.nixpkgs-unstable.lib.nixosSystem {
+```
+
+A flake of your own works the same way. This one adds weaselway to an
+existing NixOS-WSL system; pick one of the three `nixpkgs` lines:
+
+```nix
+{
+  inputs = {
+    weaselway.url = "github:weaselway/weaselway";
+    # Only for the third option below.
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  };
+
+  outputs =
+    inputs@{ weaselway, ... }:
+    let
+      # weaselway's stable nixpkgs, everything cached:
+      nixpkgs = weaselway.inputs.nixpkgs;
+      # weaselway's nixos-unstable, everything cached:
+      # nixpkgs = weaselway.inputs.nixpkgs-unstable;
+      # your own: Mesa, mutter, KWin and what links them compile locally:
+      # nixpkgs = inputs.nixpkgs;
+    in
+    {
+      nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
+        modules = [
+          weaselway.inputs.nixos-wsl.nixosModules.default
+          weaselway.nixosModules.weaselway
+          ./configuration.nix
+        ];
+      };
+    };
+}
+```
+
+`configuration.nix` needs at least `wsl.enable = true;`,
+`weaselway.enable = true;` and a desktop, for example
+`services.desktopManager.gnome.enable = true;`. The image's
+[configuration.nix](nix/image-gnome/configuration.nix) is a complete example.
+
+The kernel module, the viewer and NixOS-WSL always come from weaselway's
+stable nixpkgs, whichever one the system uses, so they stay cached. Do not set
+`inputs.weaselway.inputs.nixpkgs.follows`: it would move them to your
+nixpkgs as well, and then the kernel trees (the kernel sources dxgdrm is
+built against) and the viewer's mingw toolchain (the compiler for Windows
+programs) compile on your machine.
+
 ## Troubleshooting
 
 ### The viewer window stays empty or closes immediately
@@ -363,5 +458,5 @@ See [Requirements](#requirements).
 ## A note on AI
 
 AI was used heavily throughout this project. This is not meant to be a
-beautiful piece of software — it is meant to solve a problem I have: I want
+beautiful piece of software. It is meant to solve a problem I have: I want
 to be able to use GNOME on my Windows machine.

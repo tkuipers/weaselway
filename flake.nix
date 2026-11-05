@@ -4,6 +4,10 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
+    # For images that track nixos-unstable, see nixosConfigurations below.
+    # dxgdrm, the viewer and NixOS-WSL stay on the stable nixpkgs either way.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+
     nixos-wsl = {
       url = "github:nix-community/NixOS-WSL";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -23,7 +27,7 @@
     # The mesa fork. Fetched with git: its .gitattributes has eol=crlf rules,
     # which Nix versions apply differently to GitHub tarballs, breaking the hash.
     mesa-src = {
-      url = "git+https://github.com/weaselway/mesa?ref=mesa-26.2.1-wsl&shallow=1";
+      url = "git+https://github.com/weaselway/mesa?ref=mesa-26.2.6-wsl&shallow=1";
       flake = false;
     };
   };
@@ -32,6 +36,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-unstable,
       nixos-wsl,
       dxgdrm,
       freerdp,
@@ -49,8 +54,8 @@
       # The same modules the image's own flake.nix imports, so nixos-rebuild
       # inside the distro rebuilds this system.
       image =
-        configPath:
-        lib.nixosSystem {
+        pkgsFlake: configPath:
+        pkgsFlake.lib.nixosSystem {
           modules = [
             nixos-wsl.nixosModules.default
             self.nixosModules.weaselway
@@ -78,8 +83,11 @@
       # Pins /etc/nixos/flake.lock to this commit, see nix/image-lock.nix.
       nixosModules.image = import ./nix/image-lock.nix { inherit self; };
 
-      nixosConfigurations.wsl-gnome = image ./nix/image-gnome;
-      nixosConfigurations.wsl-plasma = image ./nix/image-plasma;
+      nixosConfigurations.wsl-gnome = image nixpkgs ./nix/image-gnome;
+      nixosConfigurations.wsl-plasma = image nixpkgs ./nix/image-plasma;
+      # CI builds these for the cache only; there are no unstable images.
+      nixosConfigurations.wsl-gnome-unstable = image nixpkgs-unstable ./nix/image-gnome;
+      nixosConfigurations.wsl-plasma-unstable = image nixpkgs-unstable ./nix/image-plasma;
 
       # x86_64 builds on every system, since the distro is x86_64.
       packages = forAllSystems (pkgs: {
@@ -88,6 +96,14 @@
         weaselway-scripts = wsl.pkgs.weaselway-scripts;
         weaselway-viewer = wsl.pkgs.weaselway-viewer;
         weaselwayd = wsl.pkgs.weaselwayd;
+        # The rest of what cache.nixos.org lacks, for CI to build in jobs of
+        # their own before the images.
+        dxgdrm-all = dxgdrm.packages.x86_64-linux.dxgdrm-all;
+        gnome-shell = wsl.pkgs.gnome-shell;
+        gnome-control-center = wsl.pkgs.gnome-control-center;
+        kwin = wsl.pkgs.kdePackages.kwin;
+        plasma-workspace = wsl.pkgs.kdePackages.plasma-workspace;
+        plasma-desktop = wsl.pkgs.kdePackages.plasma-desktop;
         # sudo nix run .#tarballBuilder-gnome -> nixos.wsl
         tarballBuilder-gnome = self.nixosConfigurations.wsl-gnome.config.system.build.tarballBuilder;
         tarballBuilder-plasma = self.nixosConfigurations.wsl-plasma.config.system.build.tarballBuilder;

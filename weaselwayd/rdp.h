@@ -86,6 +86,12 @@ void rdp_server_set_screen_size(struct rdp_server *server, int width, int height
 bool rdp_server_take_size_request(struct rdp_server *server, int *width, int *height,
                                   uint32_t *refresh_mhz);
 
+/* True, once, when the client has said where the last @frames frames were
+ * ready relative to its monitor's vblank: @slack_us before it, the 10th
+ * percentile. */
+bool rdp_server_take_present_timing(struct rdp_server *server, uint32_t *frames,
+                                    int32_t *slack_us);
+
 /* The size the connected client wants its screen to have; false while there is
  * no client yet. For a screen the compositor does not give a size to. */
 bool rdp_server_client_size(struct rdp_server *server, int *width, int *height);
@@ -114,14 +120,15 @@ void rdp_server_set_pointer(struct rdp_server *server, const uint8_t *pixels, in
  *   begin   picks a buffer the client is not reading and brings it up to date
  *           everywhere except @rect. Only in state RDP_READY; until the frame
  *           is ended or cancelled the state is RDP_BUSY.
- *   pixels  the buffer, width * 4 bytes a row, B G R X. NULL if the pool went
+ *   pixels  the buffer, @stride bytes a row, B G R X. NULL if the pool went
  *           away in the meantime (the client left or the screen was resized);
  *           the frame is then over. Valid until the main loop runs again.
  *   end     tells the client to show @rect of it.
  */
 bool rdp_server_begin_frame(struct rdp_server *server, const struct rdp_rect *rect,
                             struct rdp_frame *frame);
-uint8_t *rdp_server_frame_pixels(struct rdp_server *server, const struct rdp_frame *frame);
+uint8_t *rdp_server_frame_pixels(struct rdp_server *server, const struct rdp_frame *frame,
+                                 size_t *stride);
 void rdp_server_end_frame(struct rdp_server *server, const struct rdp_frame *frame,
                           const struct rdp_rect *rect);
 void rdp_server_cancel_frame(struct rdp_server *server, const struct rdp_frame *frame);

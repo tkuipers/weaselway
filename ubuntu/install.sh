@@ -10,9 +10,9 @@
 set -euo pipefail
 
 # The versions the NixOS image ships (flake.lock).
-DXGDRM_VERSION=v1.2.0
-VIEWER_VERSION=v1.2.0rc1
-MESA_REV=e2008be3fa70d4b6e2cc519abb3dfabb58d1e169 # branch mesa-26.2.1-wsl
+DXGDRM_VERSION=v1.2.2
+VIEWER_VERSION=v1.2.0
+MESA_REV=e9280987cf45d60c395c5825af6ae141aa03113d # branch mesa-26.2.6-wsl
 
 PREFIX=/opt/weaselway
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -206,6 +206,13 @@ sudo tee /etc/systemd/system/modprobe@drm.service.d/weaselway.conf > /dev/null <
 [Service]
 ExecStart=
 ExecStart=-/usr/sbin/modprobe -abq -d ${PREFIX}/dxgdrm drm
+EOF
+
+# Lets weaselwayd lower its nice value to -11.
+sudo mkdir -p /etc/systemd/system/user@.service.d
+sudo tee /etc/systemd/system/user@.service.d/weaselway.conf > /dev/null <<'EOF'
+[Service]
+LimitNICE=-11
 EOF
 
 sudo tee /etc/systemd/user/weaselwayd.service > /dev/null <<'EOF'

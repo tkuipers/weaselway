@@ -43,6 +43,9 @@ are in dxgdrm's `docs/adr`, and are referred to as "dxgdrm NNNN".
 | [0028](0028-ww-prefix.md) | Commands carry a `ww-` prefix | Accepted |
 | [0029](0029-refresh-rate-from-the-viewer.md) | The viewer reports its monitor's refresh rate | Accepted |
 | [0030](0030-hyprland-follows-the-window-size.md) | aquamarine and Hyprland are patched to follow the window size | Accepted |
+| [0031](0031-vblank-phase-from-the-viewer.md) | The viewer's vblank sets the phase of dxgdrm's | Accepted |
+| [0032](0032-stable-and-unstable-nixpkgs.md) | One lock with a stable and an unstable nixpkgs | Accepted |
+| [0033](0033-gpu-priority-through-dxgkrnl-contexts.md) | GPU priority through dxgkrnl context priorities, set in Mesa | Accepted |
 
 ## Known risks
 
