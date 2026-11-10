@@ -10,9 +10,9 @@
 set -euo pipefail
 
 # The versions the NixOS image ships (flake.lock).
-DXGDRM_VERSION=v1.3.1
+DXGDRM_VERSION=v1.3.2
 VIEWER_VERSION=v1.2.0
-MESA_REV=d8bb910b617d78196e9c30c0fc004cc9cd6def0e # branch mesa-26.2.6-wsl
+MESA_REV=b3f8c1e81639b34ead460696d9d57b5f00df66e3 # branch mesa-26.2.6-wsl
 
 PREFIX=/opt/weaselway
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -181,7 +181,7 @@ KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660"
 EOF
 sudo usermod -aG render,video,input "$(id -un)"
 
-# Loads dxgdrm, evdev and uinput, takes /tmp/.X11-unix back from WSLg and
+# Loads dxgdrm, evdev, uinput and vhci_hcd, takes /tmp/.X11-unix back from WSLg and
 # mounts WSLg's shared memory, once per boot.
 sudo tee /etc/systemd/system/weaselway-prep.service > /dev/null <<EOF
 [Unit]

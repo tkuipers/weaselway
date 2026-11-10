@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     # For images that track nixos-unstable, see nixosConfigurations below.
-    # dxgdrm, the viewer and NixOS-WSL stay on the stable nixpkgs either way.
+    # The viewer and NixOS-WSL stay on the stable nixpkgs either way.
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     nixos-wsl = {
@@ -13,10 +13,9 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    dxgdrm = {
-      url = "github:tkuipers/dxgdrm/two-displays";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # Not following nixpkgs: its kernel trees (from wsl-kernel) pin their
+    # own, so nixpkgs updates don't rebuild them.
+    dxgdrm.url = "github:tkuipers/dxgdrm/two-displays";
 
     # The Windows viewer. git, not a tarball, for the reason given at mesa-src.
     freerdp = {
@@ -30,6 +29,11 @@
       url = "git+https://github.com/weaselway/mesa?ref=mesa-26.2.6-wsl&shallow=1";
       flake = false;
     };
+    # Used instead once nixpkgs' Mesa is 27, whose package fails on 26.x.
+    mesa-main-src = {
+      url = "git+https://github.com/weaselway/mesa?ref=main&shallow=1";
+      flake = false;
+    };
   };
 
   outputs =
@@ -41,6 +45,7 @@
       dxgdrm,
       freerdp,
       mesa-src,
+      mesa-main-src,
     }:
     let
       inherit (nixpkgs) lib;
@@ -69,13 +74,17 @@
       overlays.default = import ./nix/overlay.nix {
         inherit
           mesa-src
+          mesa-main-src
           freerdp
           dxgdrm
           ;
       };
 
       nixosModules.weaselway = {
-        imports = [ (import ./nix/module.nix { inherit dxgdrm; }) ];
+        imports = [
+          (import ./nix/module.nix { inherit dxgdrm; })
+          (import ./nix/bluetooth.nix { inherit (dxgdrm.inputs) wsl-kernel; })
+        ];
         nixpkgs.overlays = [ self.overlays.default ];
       };
       nixosModules.default = self.nixosModules.weaselway;
@@ -132,6 +141,10 @@
         shellcheck = pkgs.runCommand "weaselway-shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
           cd ${self}
           find . -name '*.sh' -print0 | xargs -0 shellcheck --shell=bash --severity=error
+          touch $out
+        '';
+        usbipd-auto-attach = pkgs.runCommand "weaselway-usbipd-auto-attach" { } ''
+          ${pkgs.python3}/bin/python3 -m doctest ${./libexec/usbipd-auto-attach.py}
           touch $out
         '';
       });

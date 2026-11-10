@@ -111,7 +111,8 @@ problems that show up there but are unrelated to RDP:
 - **weaselway** (this repository): the flake, the NixOS module, the overlay, the image
   configuration, weaselwayd and the shell scripts.
 - **mesa**: the image builds the branch `mesa-26.2.6-wsl` with nixpkgs' Mesa package definition.
-  `main` carries the same commits on top of upstream main.
+  `main` carries the same commits on top of upstream main; the image builds it instead once
+  nixpkgs' Mesa is 27 or newer, because nixpkgs' package only builds the Mesa major it targets.
 - **dxgdrm**: `main`. The module is built with the toolchain the WSL kernel itself is built with,
   the kernel.org crosstool gcc 13.2.0 with binutils 2.41. The kernel sets `CONFIG_MODVERSIONS` and
   rejects a module built with nixpkgs' gcc. The configure phase compares the regenerated `.config`
@@ -133,9 +134,9 @@ problems that show up there but are unrelated to RDP:
 
 ### Inputs
 
-`nixpkgs` (nixos-26.05), `nixos-wsl`, `dxgdrm`, `freerdp`, and `mesa-src` (`flake = false`).
+`nixpkgs` (nixos-26.05), `nixos-wsl`, `dxgdrm`, `freerdp`, and `mesa-src` and `mesa-main-src` (`flake = false`).
 
-`mesa-src` and `freerdp` are fetched as `git+https://…?ref=…&shallow=1` and not as `github:` inputs.
+The mesa inputs and `freerdp` are fetched as `git+https://…?ref=…&shallow=1` and not as `github:` inputs.
 GitHub tarballs of repositories with `eol=` rules in `.gitattributes` produce different NAR hashes
 with different Nix versions, and CI then fails with "NAR hash mismatch". Both repositories have been
 affected.
@@ -230,17 +231,19 @@ on a WSL installation. This section records those failures.
 ### Kernel modules and device nodes
 
 - The module is keyed on the kernel release. `weaselway-prep` loads
-  `dxgdrm-all/lib/modules/$(uname -r)/extra/dxgdrm.ko`, and the `dxgdrm` flake
-  lists the releases it is built for in its `kernels` attribute, currently
-  `6.18.40.1` and `6.18.54.1` (`-microsoft-standard-WSL2`).
+  `dxgdrm-all/lib/modules/$(uname -r)/extra/dxgdrm.ko`, and dxgdrm is built
+  for every release the `wsl-kernel` flake lists in its `kernels` attribute,
+  currently `6.18.40.1`, `6.18.54.1` and `6.18.58.1`
+  (`-microsoft-standard-WSL2`).
   On any other kernel the file does not
   exist, the unit logs that, and `ww-start-session` refuses to start for lack of
-  the KMS node. Supporting a new WSL kernel means running dxgdrm's
-  `add-kernel.sh` (see dxgdrm's WEASELWAY.md).
-- `6.18.40.1` has no DRM core, `6.18.54.1` has it but no KMS helpers. For
+  the KMS node. Supporting a new WSL kernel means running wsl-kernel's
+  `add-kernel.sh`, then updating dxgdrm's and weaselway's locks.
+- `6.18.40.1` has no DRM core, `6.18.54.1` and `6.18.58.1` have it but no KMS
+  helpers. For
   those kernels the package also contains what is missing (`hdmi.ko`, `drm.ko`,
   `drm_kms_helper.ko`, or only the last), built from the same kernel source,
-  and a `modules.dep` that loads them before `dxgdrm`. On `6.18.54.1` WSL's
+  and a `modules.dep` that loads them before `dxgdrm`. From `6.18.54.1` on WSL's
   built-in `vgem` takes `card0` and `renderD128`, and dxgdrm gets the next
   nodes; nothing in weaselway relies on the numbers.
   Where it is a module, `drm.ko` has to be loaded before systemd-logind
@@ -259,6 +262,8 @@ on a WSL installation. This section records those failures.
     that does not contain it;
   - loads `evdev` and `uinput` from WSL's own `/lib/modules`, where both are modules that nothing
     else loads;
+  - loads `vhci_hcd`, the USB/IP client that `usbipd attach --wsl` needs. usbipd would run
+    `modprobe` itself, but NixOS has none on root's `PATH`;
   - sets the scheduler's preemption mode to `full` through debugfs;
   - takes `/tmp/.X11-unix` back from WSL's read-only bind mount, so that the compositor can create
     its X socket there;
@@ -423,8 +428,13 @@ the composite action [.github/actions/build-image](.github/actions/build-image) 
 - The images of a build run are kept as artifacts for one day, the shortest GitHub allows.
 - The `unstable` jobs build the same two systems on `nixpkgs-unstable`
   (`nixosConfigurations.wsl-*-unstable`), only to fill the cache: they are not packed, kept or
-  released. dxgdrm, the viewer and NixOS-WSL follow the stable `nixpkgs`, so both share them
-  ([ADR 0032](docs/adr/0032-stable-and-unstable-nixpkgs.md)).
+  released. The viewer and NixOS-WSL follow the stable `nixpkgs`, and dxgdrm's kernel trees come
+  from wsl-kernel with a nixpkgs of their own, so both share them
+  ([ADR 0032](docs/adr/0032-stable-and-unstable-nixpkgs.md)). Updating `nixpkgs` does not rebuild
+  the kernel trees.
+- The `hyprland` jobs build Hyprland with the patched aquamarine on both channels. No image has
+  Hyprland, so this is what notices when a nixpkgs update breaks those patches
+  ([ADR 0030](docs/adr/0030-hyprland-follows-the-window-size.md)).
 - [update-nixpkgs.yml](.github/workflows/update-nixpkgs.yml) runs `nix flake update nixpkgs` on
   Fridays and `nix flake update nixpkgs-unstable` on Saturdays, calls build-image.yml with the
   new lock, and commits the lock to `main` only if that build passes. The push uses

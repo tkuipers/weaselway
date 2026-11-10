@@ -5,6 +5,24 @@ release they led to. Weekly nixpkgs updates are not listed.
 
 ## Unreleased
 
+- `weaselway.usbip.devices` keeps the listed USB devices (by VID:PID)
+  attached from Windows with usbipd-win, also after they are plugged in
+  again. The service is only installed when the list is not empty.
+- PipeWire: the quantum is capped at 512 frames. Browsers asked for 2048, and
+  the viewer plays each block as it arrives, so their audio popped.
+
+## v1.7.0 - 2026-11-10
+
+- `weaselway.bluetooth.enable` loads Bluetooth modules rebuilt with rfkill
+  for every supported WSL kernel. WSL's kernel has no rfkill, so GNOME hid a
+  working adapter. Realtek Bluetooth firmware is included, so common USB
+  sticks (Realtek, Barrot, Actions, CSR clones) work.
+- `vhci_hcd` is loaded at boot, so `usbipd attach --wsl` works on NixOS,
+  where usbipd could not find `modprobe`.
+- WSL kernel 6.18.58.1 (WSL 3.0.5), with dxgdrm v1.3.2.
+- The kernel trees dxgdrm builds against come from the new
+  [wsl-kernel](https://github.com/weaselway/wsl-kernel) flake, which pins its
+  own nixpkgs, so nixpkgs updates no longer rebuild them.
 - Mesa: `eglExportDMABUFImageMESA` fails with `EGL_BAD_ALLOC` when d3d12
   cannot share the texture, instead of returning success without fds. GTK 4
   apps (ptyxis, for example) closed one of their own fds after that, which
@@ -17,6 +35,13 @@ release they led to. Weekly nixpkgs updates are not listed.
   Vulkan both load, each keeps its own context priority. dzn signals its
   queue fence when a submit fails halfway, and its sync thread no longer
   blocks queue teardown on a point that never comes.
+- Mesa: d3d12 keeps the driver's compiled pipeline states in the Mesa shader
+  cache, so a program's second start skips most of the Windows driver's
+  shader compile (on Intel HD 630 a new state drops from about 16 ms to
+  3 ms, a large shader from 1.4 s to 0.4 s). Off on NVIDIA, whose driver
+  crashes when asked for the blob; `MESA_D3D12_PSO_CACHE=0/1` overrides. Two
+  fixes in the shader compiler: the last varying slot is compared, and a
+  failed sysvalue allocation no longer leaks.
 - dxgdrm v1.3.1: sync files from dzn no longer signal before the GPU work is
   done. `PRIME_FD_TO_HANDLE` accepts only dxgkrnl shared resources. A
   process that only opens the card node no longer counts as a compositor

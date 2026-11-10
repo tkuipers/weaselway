@@ -19,7 +19,6 @@ let
     name = "weaselway-prep-session";
     runtimeInputs = with pkgs; [
       coreutils
-      findutils
       gnugrep
       gnused
       kmod
@@ -92,6 +91,18 @@ in
       ];
       default = "gnome";
       description = "Session that `ww-start-session` starts when given none.";
+    };
+
+    usbip.devices = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "[0-9a-fA-F]{4}:[0-9a-fA-F]{4}");
+      default = [ ];
+      example = [ "2357:0604" ];
+      description = ''
+        USB devices, by VID:PID, that a service keeps attached to the distro
+        with usbipd-win's `usbipd attach --wsl`, also after they are plugged
+        in again. Share each one once on Windows with `usbipd bind`. Needs
+        usbipd-win in its default location.
+      '';
     };
   };
 
@@ -193,7 +204,7 @@ in
           ];
         };
 
-        # Loads dxgdrm, evdev and uinput, sets full preemption, takes
+        # Loads dxgdrm, evdev, uinput and vhci_hcd, sets full preemption, takes
         # /tmp/.X11-unix back from wslg.service, and mounts WSLg's shared
         # memory (fails without WSLg).
         systemd.services.weaselway-prep = {
@@ -301,6 +312,30 @@ in
           }) (lib.range 2 cfg.displays)
         );
       }
+
+      (lib.mkIf (cfg.usbip.devices != [ ]) {
+        # Runs usbipd.exe through WSL interop; systemd services don't get the
+        # Windows PATH, so the script calls it by its full path.
+        systemd.services.weaselway-usbipd-auto-attach = {
+          description = "Attach USB devices from Windows with usbipd";
+          documentation = [ "https://github.com/weaselway/weaselway" ];
+          # weaselway-prep loads vhci_hcd.
+          after = [ "weaselway-prep.service" ];
+          wantedBy = [ "multi-user.target" ];
+          serviceConfig = {
+            ExecStart = lib.escapeShellArgs [
+              (lib.getExe pkgs.python3)
+              "${../libexec/usbipd-auto-attach.py}"
+              "--hardware-ids"
+              (lib.concatStringsSep "," cfg.usbip.devices)
+              "--usbipd"
+              "${config.wsl.wslConf.automount.root}/c/Program Files/usbipd-win/usbipd.exe"
+            ];
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
 
       (lib.mkIf config.services.desktopManager.plasma6.enable {
         # KWin's setcap wrapper (for realtime scheduling) drops LD_LIBRARY_PATH,
