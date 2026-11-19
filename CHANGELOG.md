@@ -39,6 +39,10 @@ release they led to. Weekly nixpkgs updates are not listed.
 - d3d12 reuses idle textures instead of allocating a new one every frame,
   which made GTK's GL renderer slow. `eglExportDMABUFImageMESA` works on GL
   textures that were not created as shared.
+- GTK 4 apps that draw with GL, such as Video Player and Resources, no
+  longer flicker with wrong icons, text in place of icons, or black boxes.
+  d3d12 freed texture descriptors without taking the lock that guards them,
+  so two textures could end up sharing one descriptor.
 - dzn gains `fullDrawIndexUint32`, `dualSrcBlend` and
   `VK_KHR_swapchain_mutable_format`, and blends correctly with MIN and MAX.
 >>>>>>> theirs
