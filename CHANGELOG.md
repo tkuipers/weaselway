@@ -3,25 +3,12 @@
 Notable changes per release. Pre-releases (`-rcN`) are folded into the
 release they led to. Weekly nixpkgs updates are not listed.
 
-## Unreleased
+## v1.9.0 - 2026-11-20
 
-<<<<<<< ours
-||||||| base
-- Several monitors: `ww-start-viewer /sdl-windows:2` shows the desktop as two
-  monitors, each in a window of its own that can sit on a different Windows
-  monitor. Up to four work. Right Shift+Right Ctrl+N opens one more window,
-  Right Shift+Right Ctrl+X closes the focused one. dxgdrm has four outputs
-  for it, and weaselwayd reads back and sends each one on its own.
-- With several monitors, the pointer lands where it is in the viewer's window
-  when the desktop gives the monitors different scales, or arranges them
-  differently from the viewer's windows, as Plasma and Hyprland do.
-- With several monitors, moving the pointer fast from one viewer window to
-  the other no longer opens GNOME's overview. The viewer sent the pointer to
-  the top left corner for a moment.
-- GNOME patches mutter so that each monitor is drawn with a viewport inside
-  its framebuffer. With several monitors, Intel HD/UHD 620/630 GPUs left
-  trails of dragged windows on all but the rightmost monitor.
+||||||| parent of d764623 (Release v1.9.0: viewer v1.3.0 for distro installs)
 =======
+- Viewer v1.3.0 for installs on Ubuntu and Arch, with the viewer changes
+  below.
 - Several monitors: `ww-start-viewer /sdl-windows:2` shows the desktop as two
   monitors, each in a window of its own that can sit on a different Windows
   monitor. Up to four work. Right Shift+Right Ctrl+N opens one more window,
@@ -50,8 +37,7 @@ release they led to. Weekly nixpkgs updates are not listed.
   applet. Hyper-V already passed it into WSL; the image now runs UPower to
   read it. UPower takes no action on a critical battery, Windows does.
 - With NumLock on, touchpad gestures that Windows turns into arrow keys typed
-  8, 4 or 6 in the desktop. They send the arrow keys now (#8). Installs on
-  Ubuntu and Arch get this with the next viewer release.
+  8, 4 or 6 in the desktop. They send the arrow keys now (#8).
 - The viewer's stats overlay (`/sdl-show-stats`) draws a bar per frame with
   the time each stage took, and one with the time since the frame before,
   scaled to the monitor's refresh rate. It shows the latency from a frame's
@@ -61,8 +47,7 @@ release they led to. Weekly nixpkgs updates are not listed.
   off, Right Shift+Right Ctrl+P outlines the regions each frame updates, and
   Right Shift+Right Ctrl+H lists all hotkeys. The viewer says when the
   keyboard grab changes, and shows each window's monitor number after a
-  window is opened or closed. Installs on Ubuntu and Arch get these with the
-  next viewer release.
+  window is opened or closed.
 - `weaselway.viewer.copyTo = "/mnt/c/work"` makes `ww-start-viewer` copy
   the viewer and its DLLs to `C:\work\<hash>\` and run it from there,
   instead of from the store over `\\wsl.localhost`. `<hash>` is the store
