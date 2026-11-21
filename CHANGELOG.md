@@ -3,6 +3,13 @@
 Notable changes per release. Pre-releases (`-rcN`) are folded into the
 release they led to. Weekly nixpkgs updates are not listed.
 
+## Unreleased
+
+- The RDP connection between the viewer and weaselwayd no longer uses TLS.
+  It never leaves the machine, and the viewer ignored the certificate, so
+  TLS protected nothing. weaselwayd no longer generates a certificate at
+  startup and no longer needs libcrypto.
+
 ## v1.9.0 - 2026-11-20
 
 ||||||| parent of d764623 (Release v1.9.0: viewer v1.3.0 for distro installs)
