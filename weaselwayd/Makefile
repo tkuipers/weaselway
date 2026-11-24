@@ -11,12 +11,14 @@ LDLIBS  += $(shell pkg-config --libs $(PKGS)) -lm -pthread
 
 SELECTION := selection.c selection-mutter.c selection-wayland.c ext-data-control-v1-protocol.c
 SOURCES := weaselwayd.c rdp.c input.c audio.c clipboard.c formats.c placeholder.c log.c \
+           inhibit.c \
            $(SELECTION)
 # The gfxredir server channel, which distributions build FreeRDP without; see
 # gfxredir/README.md. Upstream code, so it is spared our warnings.
 GFXREDIR := gfxredir/gfxredir_server.c gfxredir/gfxredir_common.c
 HEADERS := rdp.h input.h audio.h clipboard.h selection.h selection-backends.h formats.h \
-           placeholder.h log.h ext-data-control-v1-client-protocol.h $(wildcard gfxredir/*.h)
+           placeholder.h log.h inhibit.h wwdisplay.h ext-data-control-v1-client-protocol.h \
+           $(wildcard gfxredir/*.h)
 OBJECTS := $(SOURCES:.c=.o) $(GFXREDIR:.c=.o)
 
 # The clipboard protocol of KWin and the wlroots compositors.

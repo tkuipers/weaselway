@@ -13,6 +13,7 @@
 #include "audio.h"
 #include "clipboard.h"
 #include "input.h"
+#include "wwdisplay.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -128,6 +129,8 @@ struct peer_context {
     DispServerContext *disp;
     /* Weaselway::Display: and what refresh rate its monitor has. */
     HANDLE wwdisplay;
+    /* The WWDISPLAY_INHIBIT_* flags the client holds. */
+    uint32_t inhibit_sent;
 
     /* rdpsnd and audin; see audio.h. */
     struct audio_out *audio_out;
@@ -229,6 +232,9 @@ struct rdp_server {
     int32_t present_timing_slack_us;
     /* Bumped whenever a pool goes away, which ends any frame begun on it. */
     uint64_t generation;
+
+    /* WWDISPLAY_INHIBIT_* flags, for the client to hold. */
+    uint32_t inhibit;
 };
 
 #define MS(ms) ((gint64)(ms) * G_TIME_SPAN_MILLISECOND)
@@ -921,10 +927,6 @@ disp_dispatch(struct peer_context *peer_ctx)
  * body, little endian; REFRESH_RATE's body is a UINT32 in millihertz,
  * PRESENT_TIMING's a UINT32 frame count and an INT32 slack in microseconds.
  */
-#define WWDISPLAY_DVC_CHANNEL_NAME "Weaselway::Display"
-#define WWDISPLAY_PDU_REFRESH_RATE 1
-#define WWDISPLAY_PDU_PRESENT_TIMING 2
-#define WWDISPLAY_MAX_PDU 64
 
 /* A client without the channel refuses it, and the screen keeps dxgdrm's
  * default rate. */
@@ -949,6 +951,34 @@ le32(const uint8_t *p)
     return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24;
 }
 
+/* Once the client has opened the channel, and after every change. A client
+ * that refused it gets nothing. */
+static void
+wwdisplay_send_inhibit(struct peer_context *peer_ctx)
+{
+    uint32_t flags = peer_ctx->server->inhibit;
+    uint8_t pdu[8] = { WWDISPLAY_PDU_INHIBIT, 0, 0, 0, flags, flags >> 8, flags >> 16, flags >> 24 };
+    BOOL *ready = NULL;
+    DWORD bytes = 0;
+    bool open;
+
+    if (flags == peer_ctx->inhibit_sent ||
+        !WTSVirtualChannelQuery(peer_ctx->wwdisplay, WTSVirtualChannelReady, (void **)&ready,
+                                &bytes))
+        return;
+    open = ready && *ready;
+    WTSFreeMemory(ready);
+    if (!open)
+        return;
+
+    if (!WTSVirtualChannelWrite(peer_ctx->wwdisplay, (PCHAR)pdu, sizeof(pdu), NULL)) {
+        g_warning("Weaselway::Display: cannot send the inhibit flags");
+        return;
+    }
+    peer_ctx->inhibit_sent = flags;
+    flush_channels(peer_ctx);
+}
+
 /* The PDUs arrive whole, on the main loop, when the channel manager is
  * pumped; this takes whatever came. */
 static void
@@ -960,6 +990,8 @@ wwdisplay_dispatch(struct peer_context *peer_ctx)
 
     if (!peer_ctx->wwdisplay)
         return;
+
+    wwdisplay_send_inhibit(peer_ctx);
 
     while (WTSVirtualChannelRead(peer_ctx->wwdisplay, 0, NULL, 0, &length)) {
         ULONG got = 0;
@@ -2150,6 +2182,13 @@ rdp_server_take_size_request(struct rdp_server *server, int *width, int *height,
     *height = server->wanted_height;
     *refresh_mhz = server->wanted_refresh_mhz;
     return requested;
+}
+
+void
+rdp_server_set_inhibit(struct rdp_server *server, uint32_t flags)
+{
+    server->inhibit = flags;
+    wake(server);
 }
 
 bool

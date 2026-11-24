@@ -44,6 +44,7 @@
 #include <drm_fourcc.h>
 
 #include "dxgdrm_drm.h"
+#include "inhibit.h"
 #include "input.h"
 #include "log.h"
 #include "placeholder.h"
@@ -113,6 +114,7 @@ struct weaselwayd {
     struct rdp_server *rdp;
     struct input *input;
     struct selection *selection;
+    struct inhibit *inhibit;
 
     /* What is on the screen, as DXGDRM_GET_FRAME last described it. */
     uint64_t seq, primary_seq, cursor_seq;
@@ -1293,6 +1295,14 @@ on_rdp_changed(void *data)
     pump(data);
 }
 
+static void
+on_inhibit_changed(void *data, uint32_t flags)
+{
+    struct weaselwayd *p = data;
+
+    rdp_server_set_inhibit(p->rdp, flags);
+}
+
 static gboolean
 on_stats(gpointer data)
 {
@@ -1422,6 +1432,7 @@ main(int argc, char **argv)
         g_warning("%s", error->message);
         return EXIT_FAILURE;
     }
+    p.inhibit = inhibit_new(on_inhibit_changed, &p);
 
     /* The first call is what makes the node poll readable from then on. It
      * returns at once if a compositor is already up. */
@@ -1445,6 +1456,7 @@ main(int argc, char **argv)
 
     if (p.readback.active)
         readback_disarm(&p);
+    inhibit_free(p.inhibit);
     rdp_server_free(p.rdp);
     selection_free(p.selection);
     input_free(p.input);

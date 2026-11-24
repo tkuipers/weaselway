@@ -3,6 +3,17 @@
 Notable changes per release. Pre-releases (`-rcN`) are folded into the
 release they led to. Weekly nixpkgs updates are not listed.
 
+## Unreleased
+
+- When an application in the session asks the desktop not to sleep or not
+  to blank the screen, such as a video player or a download manager, the
+  viewer asks Windows the same. Windows then does not go to sleep, and
+  keeps the display on unless it is locked. This works with GNOME, Plasma and logind
+  inhibitors (`systemd-inhibit`), and needs a new viewer.
+- The NixOS Plasma image now includes PowerDevil, Plasma's power
+  management. Plasma's power settings work, and Plasma dims and turns off
+  its screen when idle.
+
 ## v1.9.1 - 2026-11-23
 
 - The RDP connection between the viewer and weaselwayd no longer uses TLS.
@@ -20,24 +31,8 @@ release they led to. Weekly nixpkgs updates are not listed.
 
 ## v1.9.0 - 2026-11-20
 
-||||||| parent of d764623 (Release v1.9.0: viewer v1.3.0 for distro installs)
-=======
 - Viewer v1.3.0 for installs on Ubuntu and Arch, with the viewer changes
   below.
-- Several monitors: `ww-start-viewer /sdl-windows:2` shows the desktop as two
-  monitors, each in a window of its own that can sit on a different Windows
-  monitor. Up to four work. Right Shift+Right Ctrl+N opens one more window,
-  Right Shift+Right Ctrl+X closes the focused one. dxgdrm has four outputs
-  for it, and weaselwayd reads back and sends each one on its own.
-- With several monitors, the pointer lands where it is in the viewer's window
-  when the desktop gives the monitors different scales, or arranges them
-  differently from the viewer's windows, as Plasma and Hyprland do.
-- With several monitors, moving the pointer fast from one viewer window to
-  the other no longer opens GNOME's overview. The viewer sent the pointer to
-  the top left corner for a moment.
-- GNOME patches mutter so that each monitor is drawn with a viewport inside
-  its framebuffer. With several monitors, Intel HD/UHD 620/630 GPUs left
-  trails of dragged windows on all but the rightmost monitor.
 - d3d12 reuses idle textures instead of allocating a new one every frame,
   which made GTK's GL renderer slow. `eglExportDMABUFImageMESA` works on GL
   textures that were not created as shared.
@@ -47,7 +42,6 @@ release they led to. Weekly nixpkgs updates are not listed.
   so two textures could end up sharing one descriptor.
 - dzn gains `fullDrawIndexUint32`, `dualSrcBlend` and
   `VK_KHR_swapchain_mutable_format`, and blends correctly with MIN and MAX.
->>>>>>> theirs
 - The laptop's battery shows in GNOME's quick settings and Plasma's battery
   applet. Hyper-V already passed it into WSL; the image now runs UPower to
   read it. UPower takes no action on a critical battery, Windows does.
@@ -57,7 +51,7 @@ release they led to. Weekly nixpkgs updates are not listed.
   the time each stage took, and one with the time since the frame before,
   scaled to the monitor's refresh rate. It shows the latency from a frame's
   arrival to its display, late and dropped frames, and how evenly frames
-  arrive. With several monitors, each window shows its own numbers.
+  arrive.
 - Viewer hotkeys: Right Shift+Right Ctrl+A turns the stats overlay on and
   off, Right Shift+Right Ctrl+P outlines the regions each frame updates, and
   Right Shift+Right Ctrl+H lists all hotkeys. The viewer says when the
