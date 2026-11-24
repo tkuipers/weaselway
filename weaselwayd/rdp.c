@@ -54,8 +54,9 @@
 /* An upper bound on the number of FreeRDP event handles, listener or peer. */
 #define MAX_FREERDP_FDS 32
 
-/* The one fullscreen desktop window, RDP_RAIL_DESKTOP_WINDOW_ID. */
-#define DESKTOP_WINDOW_ID 0xFFFFFFFF
+/* The viewer draws into its window the presents for that window's monitor
+ * index, and a viewer here has the one window. */
+#define DESKTOP_WINDOW_ID 0
 #define POOL_ID 1
 /* Buffer ids are 1-based. */
 #define BUFFER_ID(i) ((uint64_t)((i) + 1))
