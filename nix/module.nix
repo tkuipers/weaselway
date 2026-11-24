@@ -193,6 +193,12 @@ in
         # NixOS-WSL mounts WSLg's X0 socket where the compositor puts its own.
         systemd.units."tmp-.X11\\x2dunix-X0.mount".enable = lib.mkForce false;
 
+        # WSL's generated unit bind-mounts WSLg's read-only .X11-unix again
+        # whenever X0 is missing. switch-to-configuration starts it, and without
+        # a running session the next compositor gets no X socket. weaselway-prep
+        # removes the mount that WSL makes at boot.
+        systemd.units."wslg.service".enable = false;
+
         # logind only allows device classes that exist when it starts
         # (DeviceAllow=char-drm). Where DRM core is a module, it is in the dxgdrm
         # package, so load it from there before logind. Quiet if DRM is built in.
@@ -243,6 +249,9 @@ in
           description = "Weaselway display server for the Windows viewer";
           documentation = [ "https://github.com/weaselway/weaselway" ];
           wantedBy = [ "default.target" ];
+          # A copy in another user's session, e.g. root's after wsl -u root,
+          # can't get the vsock port and restarts forever.
+          unitConfig.ConditionUser = config.wsl.defaultUser;
           # PipeWire is socket activated; the audio threads retry until it is up.
           serviceConfig = {
             ExecStart =
@@ -256,6 +265,26 @@ in
         # Lets weaselwayd lower its nice value to -11, like PipeWire gets via rtkit.
         # A unit limit, not rtkit, because rtkit raises single threads only.
         systemd.services."user@".serviceConfig.LimitNICE = "-11";
+
+        # Hyper-V passes the host's battery in over ACPI (BAT1, AC1). The desktops
+        # read it through UPower, which they only enable with powerManagement,
+        # and NixOS-WSL turns that off. Forced: they set it to that value.
+        services.upower = {
+          enable = lib.mkForce true;
+          # Windows acts on a critical battery. UPower's default, HybridSleep or
+          # else PowerOff, would stop the distro.
+          criticalPowerAction = "Ignore";
+          allowRiskyCriticalPowerAction = true;
+        };
+
+        # Windows suspends the machine, not the distro. Without this, logind lets
+        # GNOME and Plasma suspend the WSL kernel when the session is idle.
+        systemd.sleep.settings.Sleep = {
+          AllowSuspend = "no";
+          AllowHibernation = "no";
+          AllowHybridSleep = "no";
+          AllowSuspendThenHibernate = "no";
+        };
 
         # PipeWire, with the protocol-simple servers weaselwayd connects to.
         services.pipewire = {

@@ -5,6 +5,62 @@ release they led to. Weekly nixpkgs updates are not listed.
 
 ## Unreleased
 
+- The laptop's battery shows in GNOME's quick settings and Plasma's battery
+  applet. Hyper-V already passed it into WSL; the image now runs UPower to
+  read it. UPower takes no action on a critical battery, Windows does.
+- The desktop no longer offers to suspend, or suspends when idle. Windows
+  suspends the machine.
+- X11 applications work in a session started after `nixos-rebuild switch`.
+  The switch mounted WSLg's read-only `/tmp/.X11-unix` again when no session
+  was running.
+
+## v1.8.0 - 2026-11-16
+
+- Mesa 26.2.7. Images on nixos-unstable, where Mesa is 26.3.0, get the same
+  fixes on Mesa 26.3.0.
+- dzn reports Vulkan 1.3 on GPUs with Shader Model 6.6. It gains demote,
+  terminate_invocation, zero_initialize_workgroup_memory, image_robustness,
+  pipeline_creation_feedback, maintenance4, extended_dynamic_state 1 and 2,
+  inline_uniform_block and vulkan_memory_model.
+- d3d12 GL fixes from a GL CTS run: tessellation and geometry shader
+  primitive counts, binding slots and ranges, stencil copies of array
+  layers, clip and cull distances.
+- dzn imports fds and orders timeline syncobjs correctly on dxgdrm.
+- VA-API: all VADisplays of a process share one lock.
+- `distro/install.py` replaces `ubuntu/install.sh` and installs weaselway on
+  Ubuntu, Arch Linux and CachyOS (Arch support by Jexelus, #10). It asks for
+  the desktop (`--desktop gnome|kde|hyprland`), for Flatpak support
+  (`--flatpak`) and for Bluetooth (`--bluetooth`), or takes them as options.
+  It rebuilds the distro's mutter, KWin or aquamarine and Hyprland with the
+  same patches as the NixOS image, and on Arch FreeRDP with the PCM fix. See
+  `distro/README.md`.
+- With `--flatpak` the installer builds weaselway's Mesa as a local Flatpak
+  GL extension for the `25.08` and `26.08` runtimes, so Flatpak apps such as
+  Flathub's Chromium and Firefox render on the GPU. It no longer adds the
+  xtradeb PPA or Mozilla's repository on Ubuntu. Existing installs keep them
+  until you remove `/etc/apt/sources.list.d/mozilla.sources`,
+  `/etc/apt/preferences.d/{xtradeb,mozilla}` and run
+  `sudo add-apt-repository -r ppa:xtradeb/apps`.
+- Releases carry the Bluetooth modules with rfkill as
+  `wsl-bluetooth-<kernel>.tar.gz`, for `distro/install.py --bluetooth`.
+- GNOME no longer hangs when WSL's vgem device is announced again, for
+  example when another distro starts in the same WSL VM. mutter closed its
+  own display connection and spun at 100% CPU with a black viewer.
+- weaselwayd shows "Screen is off" while the compositor has the display off,
+  for example when the desktop blanks the screen after idling. The viewer
+  kept the last frame before.
+- `ww-start-viewer` passes `/sdl-allow-screensaver`, so Windows can turn the
+  monitor off again while the viewer runs. It stayed on before, even with
+  Windows locked.
+- A "Remote Desktop Microphone" no longer stays behind in PipeWire after
+  each viewer reconnect.
+- weaselwayd no longer leaks a file descriptor (an eventfd) per viewer
+  session.
+- The "Remote Desktop Microphone" comes back after PipeWire restarts, also
+  while the client sends no samples.
+
+## v1.7.1 - 2026-11-10
+
 - `weaselway.usbip.devices` keeps the listed USB devices (by VID:PID)
   attached from Windows with usbipd-win, also after they are plugged in
   again. The service is only installed when the list is not empty.

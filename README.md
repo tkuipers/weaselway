@@ -83,8 +83,8 @@ ww-start-viewer
 The release images are the quickest way in. To add weaselway to a NixOS-WSL
 system you already have, see
 [Into an existing NixOS-WSL system](#into-an-existing-nixos-wsl-system).
-[ubuntu/README.md](ubuntu/README.md) installs it into an Ubuntu 26.04 distro
-instead.
+[distro/README.md](distro/README.md) installs it into an Ubuntu, Arch Linux or
+CachyOS distro instead.
 
 ### From the image
 
@@ -107,9 +107,11 @@ instead.
    wsl -d Weaselway
    ```
 
-   The shell runs as the user `nixos`, with the password `nixos`. The desktop
-   asks for it on the lock screen; `sudo` does not ask for it. Change it with
-   `passwd`.
+   The shell runs as the user `nixos`, with the password `nixos`. Plasma asks
+   for it on the lock screen; `sudo` does not ask for it. Change it with
+   `passwd`. GNOME has no lock screen here: gnome-shell only locks when its
+   display manager (GDM) runs, and the session starts without one. Lock
+   Windows instead.
 
 [Using it](#using-it) continues from here.
 
@@ -211,6 +213,8 @@ keyboard settings, not in the viewer.
 The viewer forwards touchpad gestures with three or more fingers, audio
 playback and the microphone. The session sees a touchpad of its own, so the
 desktop's swipe and pinch gestures work.
+
+On a laptop, the desktop shows the battery's charge as Windows reports it.
 
 <!-- VIDEO (short GIF, 5 s): a three-finger swipe opening the GNOME overview in
      the viewer. Touchpad gestures are unusual for a remote desktop and hard to
@@ -403,6 +407,10 @@ deviates from the NixOS defaults in two places:
 `ww-start-viewer` appends its arguments to the `sdl-freerdp.exe` command line,
 so any FreeRDP option can be added or overridden for one run.
 
+The viewer lets Windows turn the monitor off and start the screen saver
+(`/sdl-allow-screensaver`). Without that option, SDL keeps the monitor on
+while the viewer runs, even when Windows is locked.
+
 To run a different build of the viewer, set `WEASELWAY_VIEWER`:
 
 ```sh
@@ -547,8 +555,8 @@ details.
 - [docs/adr](docs/adr) holds the architecture decision records, one file per
   design decision with its reasons.
 - [CHANGELOG.md](CHANGELOG.md) lists the changes in each release.
-- [ubuntu/README.md](ubuntu/README.md) installs weaselway on Ubuntu instead of
-  NixOS.
+- [distro/README.md](distro/README.md) installs weaselway on Ubuntu, Arch Linux
+  or CachyOS instead of NixOS.
 
 ## A note on AI
 

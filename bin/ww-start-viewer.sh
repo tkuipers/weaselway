@@ -76,6 +76,8 @@ COMMAND=(
     /log-level:warn
     /multitouch
     /sdl-touchpad-gestures
+    # SDL keeps the monitor on otherwise, even while Windows is locked.
+    /sdl-allow-screensaver
 )
 # Sound belongs to the first display's viewer.
 if [ "${DISPLAY_NUMBER}" = 1 ]; then

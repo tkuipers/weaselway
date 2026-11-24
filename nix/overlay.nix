@@ -1,7 +1,5 @@
 # weaselway's packages and patches to nixpkgs.
 {
-  mesa-src,
-  mesa-main-src,
   freerdp,
   dxgdrm,
 }:
@@ -10,8 +8,33 @@ final: prev:
 let
   inherit (prev) lib;
 
-  # nixpkgs' Mesa package only builds the Mesa major it was written for.
-  mesaSrc = if lib.versionOlder prev.mesa.version "27" then mesa-src else mesa-main-src;
+  # The mesa fork. nixpkgs' Mesa package only builds the Mesa major it was
+  # written for, so each nixpkgs Mesa gets the fork branch that matches it.
+  # To update one: set rev to the branch head and hash to "", build, and take
+  # the hash from the error. version is the branch's VERSION file; reading it
+  # from src would be import-from-derivation.
+  mesaFork =
+    if lib.versions.majorMinor prev.mesa.version == "26.3" then
+      # branch mesa-26.3.0-wsl
+      {
+        version = "26.3.0";
+        rev = "9c59a6d08abfa010172e4fc449ef0b03d51407fc";
+        hash = "sha256-IzAYrU22/qpwAGIErTjdQHfcuZwgAT3ntPEIPGhxOvE=";
+      }
+    else if lib.versionOlder prev.mesa.version "27" then
+      # branch mesa-26.2.7-wsl
+      {
+        version = "26.2.7";
+        rev = "1c7b434247ac17cefc7fc137e1a581047631bc53";
+        hash = "sha256-Zrf64QSmmvhsGa04RYtEB+sMUOCH4sdIPo5cD3YAwh8=";
+      }
+    else
+      # branch main
+      {
+        version = "27.0.0-devel";
+        rev = "d80250deb66fed0cb3880911a90c8f3b6b7b2832";
+        hash = "sha256-2cbqy/+d+DJrfZlc0RwKNaV2ZqiFoHaw4ZIAMV1cHGI=";
+      };
 
   mesaDrivers = {
     # d3d12 does the work, llvmpipe is the fallback without a GPU.
@@ -31,8 +54,12 @@ in
   # Not a replacement for pkgs.mesa, which would rebuild everything linking
   # libgbm. The module uses it as hardware.graphics.package.
   weaselway-mesa = (prev.mesa.override mesaDrivers).overrideAttrs (old: {
-    version = "${lib.fileContents "${mesaSrc}/VERSION"}-weaselway";
-    src = mesaSrc;
+    version = "${mesaFork.version}-weaselway";
+    src = final.fetchFromGitHub {
+      owner = "weaselway";
+      repo = "mesa";
+      inherit (mesaFork) rev hash;
+    };
 
     # Drops nixpkgs' check that the GL headers match its own mesa release.
     postPatch = ''
@@ -74,6 +101,12 @@ in
         name = "mutter-stage-relayout.patch";
         path = ./mutter-stage-relayout.patch;
       })
+      # A failed device open closed fd 0, which can be the KMS fd: GNOME hung
+      # when WSL's vgem came back through udev. Also from that main.
+      (builtins.path {
+        name = "mutter-kms-fd0.patch";
+        path = ./mutter-kms-fd0.patch;
+      })
     ];
   });
 
@@ -101,12 +134,16 @@ in
 
   # Hyprland's backend ignores new modes of a connector that stays connected,
   # so Hyprland does not follow the viewer's window size. Backport of main of
-  # github.com/weaselway/aquamarine.
+  # github.com/weaselway/aquamarine, picked by aquamarine's version.
   aquamarine = prev.aquamarine.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       (builtins.path {
         name = "aquamarine-mode-changes.patch";
-        path = ./aquamarine-0.11-mode-changes.patch;
+        path =
+          if lib.versionOlder old.version "0.11" then
+            ./aquamarine-0.10-mode-changes.patch
+          else
+            ./aquamarine-0.11-mode-changes.patch;
       })
     ];
   });
@@ -119,8 +156,10 @@ in
       (builtins.path {
         name = "hyprland-modeset-buffer-size.patch";
         path =
-          if lib.versionOlder old.version "0.57" then
+          if lib.versionOlder old.version "0.56" then
             ./hyprland-0.55-modeset-buffer-size.patch
+          else if lib.versionOlder old.version "0.57" then
+            ./hyprland-0.56-modeset-buffer-size.patch
           else
             ./hyprland-0.57-modeset-buffer-size.patch;
       })
